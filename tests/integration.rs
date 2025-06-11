@@ -16,7 +16,7 @@ use miden_lib::{
     account::{
         auth::RpoFalcon512,
         faucets::create_basic_fungible_faucet,
-        wallets::{BasicWallet, create_basic_wallet},
+        wallets::{AuxWallet, BasicWallet, create_basic_wallet},
     },
 };
 use miden_objects::{AccountError, account::AccountIdAnchor, crypto::dsa::rpo_falcon512};
@@ -43,7 +43,7 @@ fn create_matcher_wallet(
         .with_component(auth_component)
         .with_component(BasicWallet)
         // The `InFlightSwapWallet` component is not found in a `BasicWallet`
-        // .with_component(AuxWallet)
+        .with_component(AuxWallet)
         .build()?;
 
     Ok((account, account_seed))
