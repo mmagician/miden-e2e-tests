@@ -11,13 +11,12 @@ tracing = "0.1"
 tracing-subscriber = "0.1"
 
 miden-client = { version = "0.9", default-features = false, features = ["sqlite", "tonic", "testing"] }
-miden-objects = { path = "../miden-base/crates/miden-objects" }
-miden-lib = { path = "../miden-base/crates/miden-lib" }
-miden-tx = { path = "../miden-base/crates/miden-tx", features = ["async"] }
+# miden-objects = { path = "../miden-base/crates/miden-objects" }
+# miden-lib = { path = "../miden-base/crates/miden-lib" }
+# miden-tx = { path = "../miden-base/crates/miden-tx", features = ["async"] }
+miden-objects = { version = "0.9" }
+miden-lib = { version = "0.9" }
+miden-tx = { version = "0.9", features = ["async"] }
 miden-stdlib = { version = "0.9", default-features = false }
 miden-assembly = { version = "0.15", default-features = false }
 miden-processor = { version = "0.15", default-features = false }
-
-[patch.crates-io]
-miden-objects = { path = "../miden-base/crates/miden-objects" }
-miden-tx = { path = "../miden-base/crates/miden-tx" }
