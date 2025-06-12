@@ -76,8 +76,8 @@ async fn test_drain_faucet() {
     // For now let's use the same max supply for both tokens
     let max_supply = Felt::new(1_000);
 
-    let token_a_symbol = "NP";
-    let token_symbol_a = TokenSymbol::try_from(token_a_symbol).unwrap();
+    let token_symbol = "NP";
+    let token_symbol = TokenSymbol::try_from(token_symbol).unwrap();
 
     let decimals = 2u8;
 
@@ -87,7 +87,7 @@ async fn test_drain_faucet() {
     let (faucet_account, faucet_seed) = create_basic_fungible_faucet(
         random(),
         (&latest_epoch_block).try_into().unwrap(),
-        token_symbol_a,
+        token_symbol,
         decimals,
         max_supply,
         AccountStorageMode::Public,
@@ -193,14 +193,16 @@ async fn test_drain_faucet() {
     alice_client.submit_transaction(tx_result_a).await.unwrap();
     println!("Submitted consume transaction for Alice");
 
-    // --------------------------------------------------------------------------------
-    // Now Alice attempts to drain the faucet
-    // --------------------------------------------------------------------------------
-
     alice_client
         .import_account_by_id(faucet_account.id())
         .await
         .unwrap();
+
+    // --------------------------------------------------------------------------------
+    // Now Alice attempts to drain the faucet
+    // First, she emits a note that locks a small amount of the asset for her.
+    // That asset will eventually be burned by the faucet account.
+    // --------------------------------------------------------------------------------
 
     let asset_to_burn = mint_asset_a.into();
     let malicious_note_request = TransactionRequestBuilder::new()
@@ -213,10 +215,10 @@ async fn test_drain_faucet() {
         .await
         .unwrap();
 
-    println!(
-        "Created {} output notes",
-        malicious_note_tx_result.created_notes().num_notes()
-    );
+    alice_client
+        .submit_transaction(malicious_note_tx_result.clone())
+        .await
+        .unwrap();
 
     let note_for_alice = malicious_note_tx_result
         .created_notes()
@@ -224,12 +226,10 @@ async fn test_drain_faucet() {
         .next()
         .unwrap();
 
-    alice_client
-        .submit_transaction(malicious_note_tx_result.clone())
-        .await
-        .unwrap();
+    // --------------------------------------------------------------------------------
+    // Need to fetch the freshly created note.
+    // --------------------------------------------------------------------------------
 
-    // Wait till the note is available on chain
     let mut notes_for_alice = Vec::new();
     let start_time = std::time::Instant::now();
     while start_time.elapsed() < timeout {
@@ -255,6 +255,11 @@ async fn test_drain_faucet() {
         panic!("Notes not found on chain after 10 seconds");
     }
 
+    // --------------------------------------------------------------------------------
+    // Now Alice executed a consume-note transaction against the faucet.
+    // This should work, since the `burn` first bumps the nonce, so
+    // the epilogue check of "changing account state -> nonce bumped" is satisfied.
+    // --------------------------------------------------------------------------------
     let drain_request = TransactionRequestBuilder::new()
         .with_custom_script(
             TransactionScript::compile(
