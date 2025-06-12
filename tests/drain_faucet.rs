@@ -3,12 +3,15 @@ use std::sync::Arc;
 use rand::random;
 
 use miden_client::{
-    ClientError, Felt,
+    ClientError, Felt, Word,
     account::{AccountStorageMode, AccountType},
     asset::{FungibleAsset, TokenSymbol},
     auth::AuthSecretKey,
     keystore::FilesystemKeyStore,
-    note::{NoteFile, NoteType},
+    note::{
+        Note, NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteFile, NoteMetadata, NoteTag,
+        NoteType, build_p2id_recipient,
+    },
     transaction::{TransactionRequestBuilder, TransactionScript},
 };
 use miden_lib::{
@@ -246,7 +249,6 @@ async fn test_drain_faucet() {
                 alice_client.sync_state().await.unwrap();
             }
             Err(e) => {
-                println!("Error: {:?}", e);
                 panic!("Failed: {:?}", e);
             }
         }
@@ -260,6 +262,23 @@ async fn test_drain_faucet() {
     // This should work, since the `burn` first bumps the nonce, so
     // the epilogue check of "changing account state -> nonce bumped" is satisfied.
     // --------------------------------------------------------------------------------
+
+    let expected_output_note = Note::new(
+        NoteAssets::new(vec![
+            FungibleAsset::new(faucet_account.id(), 250).unwrap().into(),
+        ])
+        .unwrap(),
+        NoteMetadata::new(
+            faucet_account.id(),
+            NoteType::Public,
+            NoteTag::from_account_id(alice.id(), NoteExecutionMode::Local).unwrap(),
+            NoteExecutionHint::Always,
+            Felt::new(27),
+        )
+        .unwrap(),
+        build_p2id_recipient(alice.id(), Word::default()).unwrap(),
+    );
+
     let drain_request = TransactionRequestBuilder::new()
         .with_custom_script(
             TransactionScript::compile(
@@ -269,6 +288,7 @@ async fn test_drain_faucet() {
             )
             .unwrap(),
         )
+        .with_expected_output_notes(vec![expected_output_note.clone()])
         .build_consume_notes(notes_for_alice)
         .unwrap();
 
@@ -281,4 +301,55 @@ async fn test_drain_faucet() {
         .submit_transaction(drain_tx_result)
         .await
         .unwrap();
+
+    // Wait for the note to be confirmed on chain
+    let start_time = std::time::Instant::now();
+    while start_time.elapsed() < timeout {
+        let note_file = NoteFile::NoteId(expected_output_note.id());
+        match alice_client.import_note(note_file).await {
+            Ok(_) => {
+                alice_client.sync_state().await.unwrap();
+                println!("Alice's note found on chain, breaking");
+                break;
+            }
+            Err(ClientError::NoteNotFoundOnChain(_)) => {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                alice_client.sync_state().await.unwrap();
+            }
+            Err(e) => {
+                panic!("Failed: {:?}", e);
+            }
+        }
+    }
+
+    // Now Alice can claim the drained asset
+    println!("Claiming drained asset...");
+    let claim_request = TransactionRequestBuilder::new()
+        .build_consume_notes(vec![expected_output_note.id()])
+        .unwrap();
+
+    let claim_tx_result = alice_client
+        .new_transaction(alice.id(), claim_request)
+        .await
+        .unwrap();
+
+    alice_client
+        .submit_transaction(claim_tx_result)
+        .await
+        .unwrap();
+
+    // Wait for the transaction to be confirmed
+    alice_client.sync_state().await.unwrap();
+
+    // Check Alice's balance
+    let alice_account = alice_client.get_account(alice.id()).await.unwrap().unwrap();
+    let alice_balance = alice_account
+        .account()
+        .vault()
+        .get_balance(faucet_account.id())
+        .unwrap();
+    assert_eq!(
+        alice_balance, 250,
+        "Alice should have received 250 tokens from the drained faucet"
+    );
 }
