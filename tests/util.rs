@@ -1,5 +1,5 @@
 use miden_client::{
-    Word,
+    ExecutionOptions, Word,
     crypto::FeltRng,
     note::{
         Note, NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteInputs, NoteMetadata,
@@ -50,7 +50,7 @@ fn get_faucet_drain_note(receiver_id: AccountId, asset_to_burn: Asset) -> Note {
     let note_type = NoteType::Public;
     let note_execution_hint = NoteExecutionHint::Always;
     let aux = Felt::new(27);
-    let tag = NoteTag::from_account_id(receiver_id, NoteExecutionMode::Local).unwrap();
+    let tag = NoteTag::from_account_id(receiver_id);
     let amount = Felt::new(250);
 
     println!(
@@ -90,7 +90,7 @@ fn get_faucet_drain_note(receiver_id: AccountId, asset_to_burn: Asset) -> Note {
         end",
         note_type = note_type as u8,
         recipient = word_to_masm_push_string(&recipient.digest()),
-        note_execution_hint = Felt::from(note_execution_hint)
+        note_execution_hint = Felt::from(note_execution_hint),
     );
 
     let assembler = TransactionKernel::assembler().with_debug_mode(true);
@@ -149,7 +149,7 @@ pub async fn setup_client<T: TransactionAuthenticator + 'static>(
         Box::new(rng),
         store,
         authenticator,
-        false,
+        ExecutionOptions::default(),
         None,
         None,
     );

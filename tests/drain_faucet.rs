@@ -8,15 +8,13 @@ use miden_client::{
     asset::{FungibleAsset, TokenSymbol},
     auth::AuthSecretKey,
     keystore::FilesystemKeyStore,
-    note::{
-        Note, NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteFile, NoteMetadata, NoteTag,
-        NoteType, build_p2id_recipient,
-    },
+    note::{Note, NoteAssets, NoteExecutionHint, NoteFile, NoteMetadata, NoteTag, NoteType},
     transaction::{TransactionRequestBuilder, TransactionScript},
 };
 use miden_lib::{
     AuthScheme,
     account::{faucets::create_basic_fungible_faucet, wallets::create_basic_wallet},
+    note::utils::build_p2id_recipient,
     transaction::TransactionKernel,
 };
 use miden_objects::crypto::dsa::rpo_falcon512;
@@ -73,8 +71,9 @@ async fn test_drain_faucet() {
         .await
         .unwrap();
 
-    let latest_epoch_block = faucet_client.get_latest_epoch_block().await.unwrap();
-    println!("Got latest epoch block");
+    // Sync state to get chain info instead of get_latest_epoch_block
+    faucet_client.sync_state().await.unwrap();
+    println!("Got sync state");
 
     // For now let's use the same max supply for both tokens
     let max_supply = Felt::new(1_000);
@@ -89,7 +88,6 @@ async fn test_drain_faucet() {
     // --------------------------------------------------------------------------------
     let (faucet_account, faucet_seed) = create_basic_fungible_faucet(
         random(),
-        (&latest_epoch_block).try_into().unwrap(),
         token_symbol,
         decimals,
         max_supply,
@@ -103,7 +101,6 @@ async fn test_drain_faucet() {
     // --------------------------------------------------------------------------------
     let (alice, alice_seed) = create_basic_wallet(
         random(),
-        (&latest_epoch_block).try_into().unwrap(),
         auth_scheme_alice,
         AccountType::RegularAccountImmutableCode,
         AccountStorageMode::Public,
@@ -271,7 +268,7 @@ async fn test_drain_faucet() {
         NoteMetadata::new(
             faucet_account.id(),
             NoteType::Public,
-            NoteTag::from_account_id(alice.id(), NoteExecutionMode::Local).unwrap(),
+            NoteTag::from_account_id(alice.id()),
             NoteExecutionHint::Always,
             Felt::new(27),
         )
@@ -283,12 +280,10 @@ async fn test_drain_faucet() {
         .with_custom_script(
             TransactionScript::compile(
                 "begin\npush.1\ndrop\nend",
-                [],
                 TransactionKernel::assembler().with_debug_mode(true),
             )
             .unwrap(),
         )
-        .with_expected_output_notes(vec![expected_output_note.clone()])
         .build_consume_notes(notes_for_alice)
         .unwrap();
 
